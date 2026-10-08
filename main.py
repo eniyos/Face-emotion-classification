@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Face Emotion & Gender Classification
-CLI entry point for running inference, web server, or demos.
+CLI entry point for running inference, web server, training, or evaluation.
 """
 
 import argparse
@@ -137,12 +137,31 @@ def main():
     parser.add_argument('--webcam', action='store_true', help="Run real-time webcam classification demo")
     parser.add_argument('--server', action='store_true', help="Start Flask classification server")
     parser.add_argument('--port', type=int, default=8084, help="Port for Flask server (default 8084)")
+    parser.add_argument('--train-emotion', action='store_true', help="Train emotion classifier on FER2013")
+    parser.add_argument('--eval-emotion', action='store_true', help="Evaluate emotion classifier on FER2013 test set")
+    parser.add_argument('--dataset-path', type=str, default=None, help="Custom path to fer2013.csv")
+    parser.add_argument('--epochs', type=int, default=100, help="Epochs for training (default: 100)")
+    parser.add_argument('--batch-size', type=int, default=32, help="Batch size for training (default: 32)")
+    parser.add_argument('--model-type', type=str, default='mini_XCEPTION',
+                        choices=['mini_XCEPTION', 'simple_CNN', 'big_XCEPTION', 'tiny_XCEPTION'],
+                        help="Model architecture for emotion training (default: mini_XCEPTION)")
     args = parser.parse_args()
 
     if args.server:
         run_server(args.port)
     elif args.webcam:
         run_webcam()
+    elif args.train_emotion:
+        from train_emotion_classifier import train
+        train(
+            dataset_path=args.dataset_path,
+            batch_size=args.batch_size,
+            num_epochs=args.epochs,
+            model_type=args.model_type
+        )
+    elif args.eval_emotion:
+        from evaluate_emotion_classifier import evaluate
+        evaluate(dataset_path=args.dataset_path)
     elif args.image:
         run_image(args.image, args.output)
     else:
