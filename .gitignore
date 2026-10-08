@@ -47,4 +47,6 @@ venv.bak/
 # Temporary data / output
 images/predicted_*.png
 images/guided_*.png
+images/output.png
+images/webcam_snapshot.png
 result/
