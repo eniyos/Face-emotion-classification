@@ -2,21 +2,16 @@ from statistics import mode
 import os
 import sys
 import cv2
-try:
-    from tensorflow.keras.models import load_model
-except ImportError:
-    from keras.models import load_model
 import numpy as np
 
-# Add parent directory to path if needed
+# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils.datasets import get_labels
-from utils.inference import detect_faces
-from utils.inference import draw_text
-from utils.inference import draw_bounding_box
-from utils.inference import apply_offsets
-from utils.inference import load_detection_model
+from utils.inference import (
+    detect_faces, draw_text, draw_bounding_box,
+    apply_offsets, load_detection_model, load_trained_model
+)
 from utils.preprocessor import preprocess_input
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,8 +31,8 @@ emotion_offsets = (20, 40)
 
 # loading models
 face_detection = load_detection_model(detection_model_path)
-emotion_classifier = load_model(emotion_model_path, compile=False)
-gender_classifier = load_model(gender_model_path, compile=False)
+emotion_classifier = load_trained_model(emotion_model_path)
+gender_classifier = load_trained_model(gender_model_path)
 
 # getting input model shapes for inference
 emotion_target_size = emotion_classifier.input_shape[1:3]

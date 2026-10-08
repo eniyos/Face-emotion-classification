@@ -1,25 +1,24 @@
 import sys
 import os
 import cv2
-try:
-    from tensorflow.keras.models import load_model
-except ImportError:
-    from keras.models import load_model
 import numpy as np
 
-# Add parent directory to path if needed
+# Suppress verbose TF logging and warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import warnings
+warnings.filterwarnings('ignore')
+
+# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils.datasets import get_labels
-from utils.inference import detect_faces
-from utils.inference import draw_text
-from utils.inference import draw_bounding_box
-from utils.inference import apply_offsets
-from utils.inference import load_detection_model
-from utils.inference import load_image
+from utils.inference import (
+    detect_faces, draw_text, draw_bounding_box,
+    apply_offsets, load_detection_model, load_image,
+    load_trained_model
+)
 from utils.preprocessor import preprocess_input
 
-# resolve base paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # parameters for loading data and images
@@ -29,7 +28,6 @@ emotion_model_path = os.path.join(BASE_DIR, 'trained_models/emotion_models/fer20
 gender_model_path = os.path.join(BASE_DIR, 'trained_models/gender_models/simple_CNN.81-0.96.hdf5')
 emotion_labels = get_labels('fer2013')
 gender_labels = get_labels('imdb')
-font = cv2.FONT_HERSHEY_SIMPLEX
 
 # hyper-parameters for bounding boxes shape
 gender_offsets = (10, 10)
@@ -37,43 +35,56 @@ emotion_offsets = (0, 0)
 
 # loading models
 face_detection = load_detection_model(detection_model_path)
-emotion_classifier = load_model(emotion_model_path, compile=False)
-gender_classifier = load_model(gender_model_path, compile=False)
+emotion_classifier = load_trained_model(emotion_model_path)
+gender_classifier = load_trained_model(gender_model_path)
 
 # getting input model shapes for inference
 emotion_target_size = emotion_classifier.input_shape[1:3]
 gender_target_size = gender_classifier.input_shape[1:3]
+gender_channels = emotion_classifier.input_shape[-1] if len(gender_classifier.input_shape) > 3 else 1
 
 # loading images
 rgb_image = load_image(image_path, grayscale=False)
 gray_image = load_image(image_path, grayscale=True)
-gray_image = np.squeeze(gray_image)
-gray_image = gray_image.astype('uint8')
+gray_image = np.squeeze(gray_image).astype('uint8')
 
 faces = detect_faces(face_detection, gray_image)
 for face_coordinates in faces:
-    x1, x2, y1, y2 = apply_offsets(face_coordinates, gender_offsets)
-    rgb_face = rgb_image[y1:y2, x1:x2]
+    gx1, gx2, gy1, gy2 = apply_offsets(face_coordinates, gender_offsets)
+    gx1, gx2 = max(0, gx1), min(rgb_image.shape[1], gx2)
+    gy1, gy2 = max(0, gy1), min(rgb_image.shape[0], gy2)
 
-    x1, x2, y1, y2 = apply_offsets(face_coordinates, emotion_offsets)
-    gray_face = gray_image[y1:y2, x1:x2]
+    ex1, ex2, ey1, ey2 = apply_offsets(face_coordinates, emotion_offsets)
+    ex1, ex2 = max(0, ex1), min(gray_image.shape[1], ex2)
+    ey1, ey2 = max(0, ey1), min(gray_image.shape[0], ey2)
 
     try:
-        rgb_face = cv2.resize(rgb_face, (gender_target_size[1], gender_target_size[0]))
-        gray_face = cv2.resize(gray_face, (emotion_target_size[1], emotion_target_size[0]))
+        if gender_channels == 1:
+            gender_face = gray_image[gy1:gy2, gx1:gx2]
+            gender_face = cv2.resize(gender_face, (gender_target_size[1], gender_target_size[0]))
+            gender_face = preprocess_input(gender_face, False)
+            gender_face = np.expand_dims(gender_face, 0)
+            gender_face = np.expand_dims(gender_face, -1)
+        else:
+            gender_face = rgb_image[gy1:gy2, gx1:gx2]
+            gender_face = cv2.resize(gender_face, (gender_target_size[1], gender_target_size[0]))
+            gender_face = preprocess_input(gender_face, False)
+            gender_face = np.expand_dims(gender_face, 0)
+
+        emotion_face = gray_image[ey1:ey2, ex1:ex2]
+        emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
+        emotion_face = preprocess_input(emotion_face, True)
+        emotion_face = np.expand_dims(emotion_face, 0)
+        emotion_face = np.expand_dims(emotion_face, -1)
     except Exception:
         continue
 
-    rgb_face = preprocess_input(rgb_face, False)
-    rgb_face = np.expand_dims(rgb_face, 0)
-    gender_prediction = gender_classifier.predict(rgb_face)
+    gender_prediction = gender_classifier.predict(gender_face, verbose=0)
     gender_label_arg = np.argmax(gender_prediction)
     gender_text = gender_labels[gender_label_arg]
 
-    gray_face = preprocess_input(gray_face, True)
-    gray_face = np.expand_dims(gray_face, 0)
-    gray_face = np.expand_dims(gray_face, -1)
-    emotion_label_arg = np.argmax(emotion_classifier.predict(gray_face))
+    emotion_prediction = emotion_classifier.predict(emotion_face, verbose=0)
+    emotion_label_arg = np.argmax(emotion_prediction)
     emotion_text = emotion_labels[emotion_label_arg]
 
     if gender_text == gender_labels[0]:
@@ -85,7 +96,7 @@ for face_coordinates in faces:
     draw_text(face_coordinates, rgb_image, gender_text, color, 0, -20, 1, 2)
     draw_text(face_coordinates, rgb_image, emotion_text, color, 0, -50, 1, 2)
 
-bgr_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
+bgr_image = cv2.cvtColor(rgb_image.astype('uint8'), cv2.COLOR_RGB2BGR)
 output_path = os.path.join(BASE_DIR, 'images/predicted_test_image.png')
 cv2.imwrite(output_path, bgr_image)
 print(f"Prediction complete. Result saved to {output_path}")

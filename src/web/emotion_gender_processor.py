@@ -2,10 +2,6 @@ import os
 import sys
 import logging
 import cv2
-try:
-    from tensorflow.keras.models import load_model
-except ImportError:
-    from keras.models import load_model
 import numpy as np
 
 # Add src and parent to path
@@ -14,11 +10,10 @@ src_dir = os.path.dirname(current_dir)
 sys.path.append(src_dir)
 
 from utils.datasets import get_labels
-from utils.inference import detect_faces
-from utils.inference import draw_text
-from utils.inference import draw_bounding_box
-from utils.inference import apply_offsets
-from utils.inference import load_detection_model
+from utils.inference import (
+    detect_faces, draw_text, draw_bounding_box,
+    apply_offsets, load_detection_model, load_trained_model
+)
 from utils.preprocessor import preprocess_input
 
 BASE_DIR = os.path.dirname(src_dir)
@@ -40,9 +35,9 @@ def get_models():
     if face_detection is None:
         face_detection = load_detection_model(detection_model_path)
     if emotion_classifier is None:
-        emotion_classifier = load_model(emotion_model_path, compile=False)
+        emotion_classifier = load_trained_model(emotion_model_path)
     if gender_classifier is None:
-        gender_classifier = load_model(gender_model_path, compile=False)
+        gender_classifier = load_trained_model(gender_model_path)
     return face_detection, emotion_classifier, gender_classifier
 
 
