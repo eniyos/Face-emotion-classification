@@ -66,15 +66,34 @@ def get_colors(num_classes):
 
 
 def _extract_layer_weights(h5_group):
-    """Recursively collect weight datasets from an HDF5 group in stable order."""
-    weight_datasets = []
+    """Collect weight datasets from an HDF5 group in the exact order Keras expects."""
+    # Read the intended order recorded by Keras during save
+    if 'weight_names' in h5_group.attrs:
+        weight_names = h5_group.attrs['weight_names']
+        if len(weight_names) > 0 and isinstance(weight_names[0], bytes):
+            weight_names = [w.decode('utf8') for w in weight_names]
 
+        weights = []
+        for w_name in weight_names:
+            # Often weight_names entries look like "conv2d_1/kernel:0" but the dataset is group['conv2d_1/kernel:0']
+            # or nested. h5py group supports path access.
+            if w_name in h5_group:
+                weights.append(h5_group[w_name][()])
+            else:
+                # Some versions drop the prefix in the group hierarchy
+                local_name = w_name.split('/')[-1]
+                if local_name in h5_group:
+                    weights.append(h5_group[local_name][()])
+        if weights:
+            return weights
+
+    # Fallback to sorted (risky, but batch_norm breaks if not handled)
+    weight_datasets = []
     def visitor(name, obj):
         if isinstance(obj, h5py.Dataset):
             weight_datasets.append((name, obj[()]))
 
     h5_group.visititems(visitor)
-    # Sort by name to preserve kernel/bias/gamma/beta ordering
     weight_datasets.sort(key=lambda x: x[0])
     return [w[1] for w in weight_datasets]
 
@@ -93,7 +112,7 @@ def load_trained_model(model_path):
         except Exception:
             pass
 
-    # 2. Try loading and fixing legacy model_config from HDF5
+    # Extract info from HDF5
     with h5py.File(model_path, 'r') as f:
         model_config_raw = f.attrs.get('model_config')
         if model_config_raw is not None:
@@ -117,10 +136,15 @@ def load_trained_model(model_path):
                     # Load weights layer by layer from HDF5
                     if 'model_weights' in f:
                         weights_grp = f['model_weights']
+                        # Older keras nested weights under group -> layer_name -> layer_name
                         for layer in model.layers:
                             layer_name = layer.name
                             if layer_name in weights_grp:
-                                layer_weights = _extract_layer_weights(weights_grp[layer_name])
+                                grp = weights_grp[layer_name]
+                                # check if there is an intermediate group
+                                if layer_name in grp and isinstance(grp[layer_name], h5py.Group):
+                                    grp = grp[layer_name]
+                                layer_weights = _extract_layer_weights(grp)
                                 if len(layer_weights) > 0:
                                     try:
                                         layer.set_weights(layer_weights)
@@ -134,20 +158,42 @@ def load_trained_model(model_path):
     from models.cnn import mini_XCEPTION, simple_CNN, big_XCEPTION, tiny_XCEPTION
     basename = os.path.basename(model_path).lower()
 
+    # Determine input shape from the config manually
+    shape = (64, 64, 1)
+    try:
+        with h5py.File(model_path, 'r') as f:
+            cfg = f.attrs.get('model_config')
+            if cfg:
+                if isinstance(cfg, bytes): cfg = cfg.decode('utf-8')
+                d = json.loads(cfg)
+                layers = d['config'] if isinstance(d['config'], list) else d['config'].get('layers', [])
+                for l in layers:
+                    if 'batch_input_shape' in l.get('config', {}):
+                        s = l['config']['batch_input_shape']
+                        # s is usually [None, height, width, channels]
+                        if len(s) == 4:
+                            shape = tuple(s[1:])
+                        break
+    except Exception:
+        pass
+
     if 'gender' in basename or 'simple_cnn' in basename:
-        model = simple_CNN((48, 48, 1) if '48' in basename else (64, 64, 1), 2)
+        model = simple_CNN(shape, 2)
     elif 'big_xception' in basename:
-        model = big_XCEPTION((64, 64, 1), 7)
+        model = big_XCEPTION(shape, 7)
     elif 'tiny_xception' in basename:
-        model = tiny_XCEPTION((64, 64, 1), 7)
+        model = tiny_XCEPTION(shape, 7)
     else:
-        model = mini_XCEPTION((64, 64, 1), 7)
+        model = mini_XCEPTION(shape, 7)
 
     with h5py.File(model_path, 'r') as f:
         weights_grp = f['model_weights'] if 'model_weights' in f else f
         for layer in model.layers:
             if layer.name in weights_grp:
-                layer_weights = _extract_layer_weights(weights_grp[layer.name])
+                grp = weights_grp[layer.name]
+                if layer.name in grp and isinstance(grp[layer.name], h5py.Group):
+                    grp = grp[layer.name]
+                layer_weights = _extract_layer_weights(grp)
                 if len(layer_weights) > 0:
                     try:
                         layer.set_weights(layer_weights)

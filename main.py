@@ -47,7 +47,7 @@ def run_image(image_path, output_path=None):
 
     emotion_target_size = emotion_classifier.input_shape[1:3]
     gender_target_size = gender_classifier.input_shape[1:3]
-    gender_channels = emotion_classifier.input_shape[-1] if len(gender_classifier.input_shape) > 3 else 1
+    gender_channels = gender_classifier.input_shape[-1] if len(gender_classifier.input_shape) > 3 else 1
     emotion_channels = emotion_classifier.input_shape[-1] if len(emotion_classifier.input_shape) > 3 else 1
 
     print(f"Loading image from {image_path}...")
@@ -61,7 +61,6 @@ def run_image(image_path, output_path=None):
     for i, face_coordinates in enumerate(faces):
         # Gender face crop
         gx1, gx2, gy1, gy2 = apply_offsets(face_coordinates, gender_offsets)
-        # Boundary clipping
         gx1, gx2 = max(0, gx1), min(rgb_image.shape[1], gx2)
         gy1, gy2 = max(0, gy1), min(rgb_image.shape[0], gy2)
 
@@ -83,11 +82,17 @@ def run_image(image_path, output_path=None):
                 gender_face = preprocess_input(gender_face, False)
                 gender_face = np.expand_dims(gender_face, 0)
 
-            emotion_face = gray_image[ey1:ey2, ex1:ex2]
-            emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
-            emotion_face = preprocess_input(emotion_face, True)
-            emotion_face = np.expand_dims(emotion_face, 0)
-            emotion_face = np.expand_dims(emotion_face, -1)
+            if emotion_channels == 1:
+                emotion_face = gray_image[ey1:ey2, ex1:ex2]
+                emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
+                emotion_face = preprocess_input(emotion_face, True)
+                emotion_face = np.expand_dims(emotion_face, 0)
+                emotion_face = np.expand_dims(emotion_face, -1)
+            else:
+                emotion_face = rgb_image[ey1:ey2, ex1:ex2]
+                emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
+                emotion_face = preprocess_input(emotion_face, True)
+                emotion_face = np.expand_dims(emotion_face, 0)
         except Exception:
             continue
 
@@ -99,7 +104,7 @@ def run_image(image_path, output_path=None):
         emotion_label_arg = np.argmax(emotion_prediction)
         emotion_text = emotion_labels[emotion_label_arg]
 
-        print(f"Face {i+1}: Gender = {gender_text}, Emotion = {emotion_text}")
+        print(f"Face {i+1}: Gender = {gender_text} ({gender_prediction[0][gender_label_arg]:.2f}), Emotion = {emotion_text} ({emotion_prediction[0][emotion_label_arg]:.2f})")
 
         color = (0, 0, 255) if gender_text == gender_labels[0] else (255, 0, 0)
 
