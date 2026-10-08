@@ -32,12 +32,12 @@ def run_image(image_path, output_path=None):
 
     detection_model_path = os.path.join(PROJECT_DIR, 'trained_models/detection_models/haarcascade_frontalface_default.xml')
     emotion_model_path = os.path.join(PROJECT_DIR, 'trained_models/emotion_models/fer2013_mini_XCEPTION.102-0.66.hdf5')
-    gender_model_path = os.path.join(PROJECT_DIR, 'trained_models/gender_models/simple_CNN.81-0.96.hdf5')
+    gender_model_path = os.path.join(PROJECT_DIR, 'trained_models/gender_models/gender_mini_XCEPTION.21-0.95.hdf5')
 
     emotion_labels = get_labels('fer2013')
     gender_labels = get_labels('imdb')
 
-    gender_offsets = (10, 10)
+    gender_offsets = (30, 60)
     emotion_offsets = (0, 0)
 
     print("Loading models...")

@@ -25,12 +25,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 image_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(BASE_DIR, 'images/test_image.jpg')
 detection_model_path = os.path.join(BASE_DIR, 'trained_models/detection_models/haarcascade_frontalface_default.xml')
 emotion_model_path = os.path.join(BASE_DIR, 'trained_models/emotion_models/fer2013_mini_XCEPTION.102-0.66.hdf5')
-gender_model_path = os.path.join(BASE_DIR, 'trained_models/gender_models/simple_CNN.81-0.96.hdf5')
+gender_model_path = os.path.join(BASE_DIR, 'trained_models/gender_models/gender_mini_XCEPTION.21-0.95.hdf5')
 emotion_labels = get_labels('fer2013')
 gender_labels = get_labels('imdb')
 
 # hyper-parameters for bounding boxes shape
-gender_offsets = (10, 10)
+gender_offsets = (30, 60)
 emotion_offsets = (0, 0)
 
 # loading models
@@ -41,7 +41,8 @@ gender_classifier = load_trained_model(gender_model_path)
 # getting input model shapes for inference
 emotion_target_size = emotion_classifier.input_shape[1:3]
 gender_target_size = gender_classifier.input_shape[1:3]
-gender_channels = emotion_classifier.input_shape[-1] if len(gender_classifier.input_shape) > 3 else 1
+gender_channels = gender_classifier.input_shape[-1] if len(gender_classifier.input_shape) > 3 else 1
+emotion_channels = emotion_classifier.input_shape[-1] if len(emotion_classifier.input_shape) > 3 else 1
 
 # loading images
 rgb_image = load_image(image_path, grayscale=False)
@@ -71,11 +72,17 @@ for face_coordinates in faces:
             gender_face = preprocess_input(gender_face, False)
             gender_face = np.expand_dims(gender_face, 0)
 
-        emotion_face = gray_image[ey1:ey2, ex1:ex2]
-        emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
-        emotion_face = preprocess_input(emotion_face, True)
-        emotion_face = np.expand_dims(emotion_face, 0)
-        emotion_face = np.expand_dims(emotion_face, -1)
+        if emotion_channels == 1:
+            emotion_face = gray_image[ey1:ey2, ex1:ex2]
+            emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
+            emotion_face = preprocess_input(emotion_face, True)
+            emotion_face = np.expand_dims(emotion_face, 0)
+            emotion_face = np.expand_dims(emotion_face, -1)
+        else:
+            emotion_face = rgb_image[ey1:ey2, ex1:ex2]
+            emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
+            emotion_face = preprocess_input(emotion_face, True)
+            emotion_face = np.expand_dims(emotion_face, 0)
     except Exception:
         continue
 
