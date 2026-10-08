@@ -50,6 +50,8 @@ def run_image(image_path, output_path=None):
     gender_channels = gender_classifier.input_shape[-1] if len(gender_classifier.input_shape) > 3 else 1
     emotion_channels = emotion_classifier.input_shape[-1] if len(emotion_classifier.input_shape) > 3 else 1
 
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
     print(f"Loading image from {image_path}...")
     rgb_image = load_image(image_path, grayscale=False)
     gray_image = load_image(image_path, grayscale=True)
@@ -59,12 +61,10 @@ def run_image(image_path, output_path=None):
     print(f"Detected {len(faces)} face(s).")
 
     for i, face_coordinates in enumerate(faces):
-        # Gender face crop
         gx1, gx2, gy1, gy2 = apply_offsets(face_coordinates, gender_offsets)
         gx1, gx2 = max(0, gx1), min(rgb_image.shape[1], gx2)
         gy1, gy2 = max(0, gy1), min(rgb_image.shape[0], gy2)
 
-        # Emotion face crop
         ex1, ex2, ey1, ey2 = apply_offsets(face_coordinates, emotion_offsets)
         ex1, ex2 = max(0, ex1), min(gray_image.shape[1], ex2)
         ey1, ey2 = max(0, ey1), min(gray_image.shape[0], ey2)
@@ -74,8 +74,7 @@ def run_image(image_path, output_path=None):
                 gender_face = gray_image[gy1:gy2, gx1:gx2]
                 gender_face = cv2.resize(gender_face, (gender_target_size[1], gender_target_size[0]))
                 gender_face = preprocess_input(gender_face, False)
-                gender_face = np.expand_dims(gender_face, 0)
-                gender_face = np.expand_dims(gender_face, -1)
+                gender_face = np.expand_dims(gender_face, (0, -1))
             else:
                 gender_face = rgb_image[gy1:gy2, gx1:gx2]
                 gender_face = cv2.resize(gender_face, (gender_target_size[1], gender_target_size[0]))
@@ -84,10 +83,10 @@ def run_image(image_path, output_path=None):
 
             if emotion_channels == 1:
                 emotion_face = gray_image[ey1:ey2, ex1:ex2]
+                emotion_face = clahe.apply(emotion_face)
                 emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
                 emotion_face = preprocess_input(emotion_face, True)
-                emotion_face = np.expand_dims(emotion_face, 0)
-                emotion_face = np.expand_dims(emotion_face, -1)
+                emotion_face = np.expand_dims(emotion_face, (0, -1))
             else:
                 emotion_face = rgb_image[ey1:ey2, ex1:ex2]
                 emotion_face = cv2.resize(emotion_face, (emotion_target_size[1], emotion_target_size[0]))
@@ -96,15 +95,15 @@ def run_image(image_path, output_path=None):
         except Exception:
             continue
 
-        gender_prediction = gender_classifier.predict(gender_face, verbose=0)
+        gender_prediction = gender_classifier.predict(gender_face, verbose=0)[0]
         gender_label_arg = np.argmax(gender_prediction)
         gender_text = gender_labels[gender_label_arg]
 
-        emotion_prediction = emotion_classifier.predict(emotion_face, verbose=0)
+        emotion_prediction = emotion_classifier.predict(emotion_face, verbose=0)[0]
         emotion_label_arg = np.argmax(emotion_prediction)
         emotion_text = emotion_labels[emotion_label_arg]
 
-        print(f"Face {i+1}: Gender = {gender_text} ({gender_prediction[0][gender_label_arg]:.2f}), Emotion = {emotion_text} ({emotion_prediction[0][emotion_label_arg]:.2f})")
+        print(f"Face {i+1}: Gender = {gender_text} ({gender_prediction[gender_label_arg]:.2f}), Emotion = {emotion_text} ({emotion_prediction[emotion_label_arg]:.2f})")
 
         color = (0, 0, 255) if gender_text == gender_labels[0] else (255, 0, 0)
 
@@ -120,8 +119,8 @@ def run_image(image_path, output_path=None):
 
 
 def run_webcam():
-    import subprocess
-    subprocess.run([sys.executable, os.path.join(PROJECT_DIR, 'src/video_emotion_gender_demo.py')])
+    from video_emotion_gender_demo import main as video_main
+    video_main()
 
 
 def run_server(port):
