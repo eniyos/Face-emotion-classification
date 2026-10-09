@@ -8,13 +8,22 @@ import argparse
 import os
 import sys
 
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Auto-switch to .venv python if running under system python without deps
+venv_python = os.path.join(PROJECT_DIR, '.venv/bin/python3')
+if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.abspath(venv_python):
+    try:
+        import cv2
+    except ImportError:
+        os.execv(venv_python, [venv_python] + sys.argv)
+
 # Suppress verbose TF logging and warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import warnings
 warnings.filterwarnings('ignore')
 
 # Ensure src is in Python path
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(PROJECT_DIR, 'src'))
 
 
